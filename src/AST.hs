@@ -34,7 +34,7 @@ data UOp
 
 
 parse :: Parser Expr
-parse = topLevel
+parse = topLevel <?> "ERROR"
 
 topLevel :: Parser Expr
 topLevel = command <|> assignment

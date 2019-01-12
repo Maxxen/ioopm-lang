@@ -7,8 +7,15 @@ import Control.Applicative
 
 
 -- Parsers
+type ParseError = String
+type Parser a = StateT String (Either ParseError) a
 
-type Parser a = StateT String Maybe a
+-- Error throwing
+throwError :: ParseError -> Parser a
+throwError msg = StateT $ \s -> Left msg
+
+(<?>) :: Parser a -> ParseError -> Parser a
+(StateT m) <?> msg = StateT $ \ s -> m s `mplus` Left msg
 
 
 -- Lexical Parsers
@@ -22,7 +29,7 @@ readToken p = p <* readSpace
 readSymbol :: String -> Parser String
 readSymbol s = readToken $ readString s
 
-applyParser :: Parser a -> String -> Maybe a
+applyParser :: Parser a -> String -> Either ParseError a
 applyParser p input = evalStateT (readSpace *> p) input
 
 

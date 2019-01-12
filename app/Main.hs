@@ -7,5 +7,5 @@ main = do
   eval l
 
 eval string = case (applyParser parse string) of
-  Just parsedExpr -> print $ show parsedExpr
-  Nothing -> print "Please insert something to evaluate"
+  Right parsedExpr -> print $ show parsedExpr
+  Left e -> print e
