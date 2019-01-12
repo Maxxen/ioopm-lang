@@ -1,29 +1,32 @@
 name:                ioopm-lang
 version:             0.1.0.0
-github:              "githubuser/ioopm-lang"
-license:             BSD3
-author:              "Author name here"
-maintainer:          "example@example.com"
-copyright:           "2019 Author name here"
+github:              "maxxen/ioopm-lang"
+license:             MIT
+author:              "Max Gabrielsson"
+maintainer:          "max@gabrielsson.com"
+copyright:           "2019 Max Gabrielsson"
 
 extra-source-files:
 - README.md
 - ChangeLog.md
 
 # Metadata used when publishing your package
-# synopsis:            Short description of your package
-# category:            Web
+# synopsis:            ioopm language, but in haskell
+# category:            Language
 
 # To avoid duplicated efforts in documentation and dealing with the
 # complications of embedding Haddock markup inside cabal files, it is
 # common to point users to the README.md file.
-description:         Please see the README on GitHub at <https://github.com/githubuser/ioopm-lang#readme>
+description:         Please see the README on GitHub at <https://github.com/Maxxen/ioopm-lang#readme>
 
 dependencies:
 - base >= 4.7 && < 5
 
 library:
   source-dirs: src
+  dependencies:
+  - mtl
+  - transformers
 
 executables:
   ioopm-lang-exe:
