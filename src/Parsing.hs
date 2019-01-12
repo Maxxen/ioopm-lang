@@ -74,12 +74,12 @@ readMany1 p = do
   xs <- readMany p
   return (x:xs)
   
--- Ex separateBy Int "," _ (,2,3) -> valid
+-- Ex separateBy (,2,3) "," -> valid
 separateBy :: Parser a -> Parser b -> Parser [a]
 separateBy parser separator = (parser `separateBy1` separator) <|> mzero
 
 -- Ex
--- separateBy (1, 2, 3) -> valid
+-- separateBy (1, 2, 3) "," -> valid
 -- (,2,3) -> invalid
 separateBy1 :: Parser a -> Parser b -> Parser [a]
 separateBy1 parser separator = do
