@@ -87,6 +87,15 @@ separateBy1 parser separator = do
   xs <- many $ separator *> parser
   return (x:xs)
 
+
+{--
+Chain expressions "left":
+  op
+  / \
+ p   op
+     / \
+    p   p
+--}
 chain :: Parser a -> Parser (a -> a -> a) -> Parser a
 chain parser operation = parser >>= rest
   where rest left = do {
@@ -95,3 +104,18 @@ chain parser operation = parser >>= rest
           rest (f left right);
           } <|> return left
 
+{-
+Chain expression "upwards"
+     op
+    /  \
+   op   p
+  /  \
+ s    p
+-}
+chainUp :: Parser a -> Parser (a -> a -> a) -> Parser a -> Parser a
+chainUp start operation parser = do {
+  s <- start;
+  op <- operation;
+  p <- parser;
+  chainUp (return (op s p)) operation parser;
+  } <|> start

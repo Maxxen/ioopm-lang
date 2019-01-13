@@ -48,13 +48,16 @@ command = do
     _ -> mzero
 
 assignment :: Parser Expr
-assignment = do {
+assignment = chainUp expression (readSymbol "=" *> return (Binary Assignment)) identifier
+
+
+  {-- do {
   left <- expression;
   readSymbol "=";
   right <- rhs;
   return $ Binary Assignment left right;
   } <|> expression
-
+--}
 
 rhs :: Parser Expr
 rhs = chain identifier (readSymbol "=" *> return (Binary Assignment) )
