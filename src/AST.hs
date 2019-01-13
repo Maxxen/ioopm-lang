@@ -50,15 +50,6 @@ command = do
 assignment :: Parser Expr
 assignment = chainUp expression (readSymbol "=" *> return (Binary Assignment)) identifier
 
-
-  {-- do {
-  left <- expression;
-  readSymbol "=";
-  right <- rhs;
-  return $ Binary Assignment left right;
-  } <|> expression
---}
-
 rhs :: Parser Expr
 rhs = chain identifier (readSymbol "=" *> return (Binary Assignment) )
 
@@ -81,11 +72,12 @@ term = chain primary operation
         "/" ->  Binary Division
         
 primary :: Parser Expr
-primary = readSymbol "(" *> assignment  <* readSymbol ")"
+primary = readConstant
+  <|> readSymbol "(" *> assignment  <* readSymbol ")"
   <|> unary
-  <|> readConstant
-  -- <|> identifier
-
+  <|> identifier
+  <?> "error, expected constant or identifier!"
+  
 readConstant :: Parser Expr
 readConstant = do
   -- This could probably be done more efficiently, add a primitive "read any string" combinator?

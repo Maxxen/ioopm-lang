@@ -23,6 +23,7 @@ type StrictEval = Evaluator Float
 
 emptyEnv :: H.HashMap Var Expr
 emptyEnv = H.empty
+
 -- Strict evaluation
 
 evalStrict :: Expr -> StrictEval
