@@ -1,12 +1,84 @@
 module Evaluation where
 import AST
+import Control.Monad.State
+import Control.Monad.Writer
+import Control.Monad.Except
+import Control.Monad.Identity
 
-evaluate :: Expr -> Either Expr Float
-evaluate (Constant x) = Right x
 
-evaluate (Binary op l r) = do
-  le <- evaluate l
-  re <- evaluate r
+import qualified Data.HashMap.Lazy as H
+
+type Environment = H.HashMap String Expr
+type EvalError = String
+
+type Evaluator = StateT Environment (ExceptT EvalError (WriterT [String] Identity))
+runEvaluator :: Evaluator a -> Environment -> Either EvalError a
+runEvaluator ev env = case runIdentity $ runWriterT $ runExceptT $ runStateT ev env of
+  (Right (r,s), log) -> Right r
+  (Left err, log) -> Left err
+  
+type PartialEvaluation = Evaluator (Either Expr Float)
+type StrictEval = Evaluator Float
+
+emptyEnv :: H.HashMap String Expr
+emptyEnv = H.empty
+-- Strict evaluation
+
+evalStrict :: Expr -> StrictEval
+evalStrict (Constant x) = do
+  tell [show x]
+  return x
+
+evalStrict (Binary op lhs rhs) = do
+  l <- evalStrict lhs
+  r <- evalStrict rhs
+  tell [show op]
+  case op of
+    Addition -> return (l + r)
+    Subtraction -> return (l - r)
+    Multiplication -> return (l * r)
+    Division -> if r == 0
+      then throwError "Division by 0!"
+      else return (l / r)
+
+evalStrict (Unary op a) = do
+  arg <- evalStrict a
+  case op of
+    Negation -> return (- arg)
+    Exp -> return (exp arg)
+    Log -> if arg < 0
+      then throwError "Logarithm is undefined for x < 0"
+      else return (log arg)
+    Sin -> return (sin arg)
+    Cos -> return (cos arg)
+
+evalStrict (Scope expr) = evalStrict expr -- TODO
+evalStrict (Identifier str) = do
+  env <- get
+  case H.lookup str env of
+    Just expr -> evalStrict expr
+    Nothing -> throwError ("Unknown identifier: " ++ show str)
+
+    
+evalStrict (Conditional cond true false) = do
+  c <- evalStrict cond
+  if c > 0
+    then do
+      evalStrict true
+    else do
+      evalStrict false
+
+
+
+-- Partial Evaluation
+
+    
+evalPartial :: Expr -> Either Expr Float
+evalPartial (Constant x) = Right x
+
+evalPartial (Binary op l r) = do
+  le <- evalPartial l
+  re <- evalPartial r
   Right $ case op of
     Addition -> (le + re)
     Subtraction -> (le - re)
@@ -14,8 +86,8 @@ evaluate (Binary op l r) = do
     Division -> (le / re)
     Assignment -> (le + re) -- TODO
 
-evaluate (Unary op a) = do
-  arg <- evaluate a
+evalPartial (Unary op a) = do
+  arg <- evalPartial a
   Right $ case op of
     Negation -> (- arg)
     Exp -> (exp arg)
@@ -23,15 +95,15 @@ evaluate (Unary op a) = do
     Sin -> (sin arg)
     Cos -> (cos arg)
 
-evaluate (Scope expr) = evaluate expr >>= Left . Scope . Constant
-evaluate (Identifier str) = Left $ Identifier str -- TODO
-evaluate (Conditional cond true false) = do
-  c <- evaluate cond
+evalPartial (Scope expr) = evalPartial expr >>= Left . Scope . Constant
+evalPartial (Identifier str) = Left $ Identifier str -- TODO
+evalPartial (Conditional cond true false) = do
+  c <- evalPartial cond
   if c > 0
     then do
-      t <- evaluate true
+      t <- evalPartial true
       Left $ Constant $ t
     else do
-      f <- evaluate false
+      f <- evalPartial false
       Left $ Constant $ f
     

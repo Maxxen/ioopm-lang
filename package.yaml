@@ -27,6 +27,8 @@ library:
   dependencies:
   - mtl
   - transformers
+  - containers
+  - unordered-containers
 
 executables:
   ioopm-lang-exe:

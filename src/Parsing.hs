@@ -11,8 +11,8 @@ type ParseError = String
 type Parser a = StateT String (Either ParseError) a
 
 -- Error throwing
-throwError :: ParseError -> Parser a
-throwError msg = StateT $ \s -> Left msg
+throwErr :: ParseError -> Parser a
+throwErr msg = StateT $ \s -> Left msg
 
 (<?>) :: Parser a -> ParseError -> Parser a
 (StateT m) <?> msg = StateT $ \ s -> m s `mplus` Left msg

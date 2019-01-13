@@ -10,7 +10,7 @@ main = do
 eval string = case (applyParser parse string) of
   Right parsedExpr -> do
     print $ show parsedExpr
-    case evaluate parsedExpr of
+    case runEvaluator (evalStrict parsedExpr) emptyEnv of
       Right x -> print $ "RESULT: " ++ show x
-      Left ex -> print $ "PARTIAL RESULT: " ++ (show ex)
-  Left e -> print e
+      Left err -> print $ "EVAL ERROR: " ++ err
+  Left e -> print $ "PARSE ERROR: " ++ e
