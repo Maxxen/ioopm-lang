@@ -1,5 +1,5 @@
 import AST
-import Parsing
+import Parsing.Combinators
 import Control.Applicative
 
 main :: IO ()

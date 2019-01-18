@@ -40,7 +40,7 @@ executables:
     - -with-rtsopts=-N
     dependencies:
     - ioopm-lang
-
+    - unordered-containers
 tests:
   ioopm-lang-test:
     main:                Spec.hs

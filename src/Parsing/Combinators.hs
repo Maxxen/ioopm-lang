@@ -1,22 +1,42 @@
-module Parsing where
+module Parsing.Combinators where
 
 import Control.Monad.State
+import Control.Monad.Except
+import Control.Monad.Identity
 import Text.Read (readMaybe)
 import Data.Char
 import Control.Applicative
 
-
 -- Parsers
-type ParseError = String
-type Parser a = StateT String (Either ParseError) a
+--type ParseError = String
+data ParseError = Unexpected String | Expected String
+  deriving(Show)
+
+instance Monoid ParseError where
+  mempty = Unexpected ""
+  
+instance Semigroup ParseError where
+  e <> (Unexpected _) = e
+  e <> f = f
+
+data Input = Input {input :: String, column :: Int}
+type Parser a = StateT Input (Except ParseError) a
 
 -- Error throwing
-throwErr :: ParseError -> Parser a
-throwErr msg = StateT $ \s -> Left msg
+throwErr :: String -> Parser a
+throwErr msg = StateT $ \s -> throwError $ Expected $ (show (column s)) ++ ": " ++ show msg
 
-(<?>) :: Parser a -> ParseError -> Parser a
-(StateT m) <?> msg = StateT $ \ s -> m s `mplus` Left msg
+-- Provide more context in case of Unexpected errors
+(<?>) :: Parser a -> String -> Parser a
+p <?> msg = (mapStateT . mapExceptT . fmap) f p
+  where
+    f (Left (Unexpected err)) = Left $ Expected $ err ++ "\n" ++ msg
+    f other = other
 
+--(StateT m) <?> msg = StateT $ \s -> case runIdentity $ runExceptT (m s) of
+--  Right val -> return val
+--  Left (Unexpected err) -> throwError $ Expected $ (show (column s)) ++ ": " ++ msg
+--  Left err -> throwError err
 
 -- Lexical Parsers
 readSpace :: Parser String
@@ -30,7 +50,7 @@ readSymbol :: String -> Parser String
 readSymbol s = readToken $ readString s
 
 applyParser :: Parser a -> String -> Either ParseError a
-applyParser p input = evalStateT (readSpace *> p) input
+applyParser p input = runIdentity $ runExceptT $ evalStateT (readSpace *> p) (Input input 0) 
 
 
 -- Helper combinators
@@ -40,13 +60,14 @@ require predicate = do
   token <- readAnyChar
   if predicate token
     then return token
-    else mzero
+    else throwError $ Unexpected $ " " ++ [token]
 
 readAnyChar :: Parser Char
-readAnyChar = StateT $ \s -> case s of
-  [] -> mzero
-  (t:ts) -> return (t, ts)
+readAnyChar = StateT $ \s -> case input s of
+  [] -> throwError $ Unexpected "end of file!"
+  (t:ts) -> return (t, Input ts (column s + 1))
 
+    
 readDigit :: Parser Char
 readDigit = require isDigit
 

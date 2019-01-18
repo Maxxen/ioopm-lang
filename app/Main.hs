@@ -1,6 +1,6 @@
-import Parsing
+import Parsing.Combinators
 import AST
-import Evaluation
+import Evaluation.StrictEval
 import qualified Data.HashMap.Lazy as H
 
 main :: IO ()
@@ -11,11 +11,11 @@ main = do
 eval string = case (applyParser parse string) of
   Right parsedExpr -> do
     print $ show parsedExpr
-    case runEvaluator (evalStrict parsedExpr) emptyEnv of
+    case runEvaluator (evaluate parsedExpr) H.empty of
       Right (result, env) -> do
         print $ "RESULT: " ++ show result
         print "VARIABLES: "
         mapM_ (\(key, val) -> print (key ++ " = " ++ (show val))) (H.toList env) 
         
       Left err -> print $ "EVAL ERROR: " ++ err
-  Left e -> print $ "PARSE ERROR: " ++ e
+  Left e -> print $ "PARSE ERROR: " ++ show e

@@ -1,5 +1,5 @@
 module AST where
-import Parsing
+import Parsing.Combinators
 import Control.Applicative
 import Control.Monad
 
@@ -40,40 +40,29 @@ topLevel :: Parser Expr
 topLevel = command <|> assignment
 
 command :: Parser Expr
-command = do
-  var <- readSymbol "quit" <|> readSymbol "vars"
-  case var of
-    "quit" -> return Quit
-    "vars" -> return Vars
-    _ -> mzero
+command = (readSymbol "quit" >> return Quit) <|> (readSymbol "vars" >> return Vars)
 
 assignment :: Parser Expr
-assignment = chainUp expression (readSymbol "=" *> return (Binary Assignment)) identifier
+assignment = chainUp expression (readSymbol "=" >> return (Binary Assignment)) identifier
 
-rhs :: Parser Expr
-rhs = chain identifier (readSymbol "=" *> return (Binary Assignment) )
 
 expression :: Parser Expr
 expression = chain term operation
   where
-    operation = do
-      op <- readSymbol "+" <|> readSymbol "-"
-      return $ case op of
-        "+" -> Binary Addition
-        "-" -> Binary Subtraction
+    operation =
+      (readSymbol "+" >> return (Binary Addition)) <|>
+      (readSymbol "-" >> return (Binary Subtraction))
 
 term :: Parser Expr
 term = chain primary operation
   where
-    operation = do
-      op <- readSymbol "*" <|> readSymbol "/"
-      return $ case op of
-        "*" ->  Binary Multiplication
-        "/" ->  Binary Division
-        
+    operation =
+      (readSymbol "*" >> return (Binary Multiplication)) <|>
+      (readSymbol "/" >> return (Binary Division))
+
 primary :: Parser Expr
 primary = readConstant
-  <|> readSymbol "(" *> assignment  <* readSymbol ")"
+  <|> (readSymbol "(" *> assignment  <* readSymbol ")")
   <|> unary
   <|> identifier
   <?> "error, expected constant or identifier!"
@@ -86,16 +75,15 @@ readConstant = do
   return $ Constant (read token :: Float)
 
     -- ReadAnyString doesnt work!, try replace with ReadNumber
-unary :: Parser Expr
-unary = do
-  func <- foldl1 (<|>) $ map readSymbol ["-", "exp", "log", "sin", "cos"]
-  arg <- primary
-  return $ case func of
-    "-" -> Unary Negation arg
-    "exp" -> Unary Exp arg
-    "log" -> Unary Log arg
-    "sin" -> Unary Sin arg
-    "cos" -> Unary Cos arg
+
+unary ::Parser Expr
+unary =
+   (readSymbol "-" >> (Unary Negation) <$> primary)
+  <|> (readSymbol "exp" >> (Unary Exp) <$> primary)
+  <|> (readSymbol "log" >> (Unary Log) <$> primary)
+  <|> (readSymbol "sin" >> (Unary Sin) <$> primary)
+  <|> (readSymbol "cos" >> (Unary Cos) <$> primary)
+  
     
 identifier :: Parser Expr
 identifier = do
