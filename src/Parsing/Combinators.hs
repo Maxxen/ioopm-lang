@@ -5,6 +5,7 @@ import Control.Monad.Except
 import Control.Monad.Identity
 import Text.Read (readMaybe)
 import Data.Char
+import Data.Semigroup
 import Control.Applicative
 
 -- Parsers

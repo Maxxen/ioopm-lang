@@ -29,6 +29,7 @@ library:
   - transformers
   - containers
   - unordered-containers
+  - transformers-either
 
 executables:
   ioopm-lang-exe:

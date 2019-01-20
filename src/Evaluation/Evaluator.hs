@@ -1,9 +1,10 @@
-module Evaluation.StrictEval where
+module Evaluation.Evaluator where
 import AST
 import Control.Monad.State
 import Control.Monad.Writer
 import Control.Monad.Except
 import Control.Monad.Identity
+import Control.Monad.Trans.Either
 import qualified Data.HashMap.Lazy as H
 
 
@@ -11,21 +12,22 @@ type Var = String
 type Environment = H.HashMap Var Expr
 type EvalError = String
 
-type Evaluator = StateT Environment (ExceptT EvalError (WriterT [String] Identity))
+type Evaluator = EitherT Expr (StateT Environment (ExceptT EvalError Identity))
 
 runEvaluator :: Evaluator a -> Environment -> Either EvalError (a, Environment)
-runEvaluator ev env = case runIdentity $ runWriterT $ runExceptT $ runStateT ev env of
-  (Right (r,s), log) -> Right (r, s)
-  (Left err, log) -> Left err
+runEvaluator ev env = case runIdentity $ runExceptT $ runStateT (runEitherT ev) env of
+  (Left err) -> Left err
+  (Right c) -> case c of
+                 (Left expr, s) -> Left "EXPRESSION NOT FULLY EVALUATED"
+                 ((Right val), s) -> Right (val, s)
+
   
-type PartialEval = Evaluator (Either Expr Float)
-type StrictEval = Evaluator Float
+type Evaluation = Evaluator Float
 
 -- Strict evaluation
 
-evaluate :: Expr -> StrictEval
+evaluate :: Expr -> Evaluation
 evaluate (Constant x) = do
-  tell [show x]
   return x
 
 evaluate (Binary Assignment lhs (Identifier str)) = do
@@ -36,14 +38,13 @@ evaluate (Binary Assignment lhs (Identifier str)) = do
 evaluate (Binary op lhs rhs) = do
   l <- evaluate lhs
   r <- evaluate rhs
-  tell [show op]
   case op of
-    Addition -> return (l + r)
-    Subtraction -> return (l - r)
-    Multiplication -> return (l * r)
+    Addition -> return $ l + r
+    Subtraction -> return $ l - r
+    Multiplication -> return $ l * r
     Division -> if r == 0
-      then throwError "Division by 0!"
-      else return (l / r)
+      then lift $ lift $ throwError "Division by 0!"
+      else return $ l / r
     
 evaluate (Unary op a) = do
   arg <- evaluate a
@@ -51,7 +52,7 @@ evaluate (Unary op a) = do
     Negation -> return (- arg)
     Exp -> return (exp arg)
     Log -> if arg < 0
-      then throwError "Logarithm is undefined for x < 0"
+      then lift $ lift $ throwError "Logarithm is undefined for x < 0"
       else return (log arg)
     Sin -> return (sin arg)
     Cos -> return (cos arg)
@@ -62,13 +63,12 @@ evaluate (Scope expr) = do
   put env -- Reset environment state
   return val
 
-
 evaluate (Identifier str) = do
   env <- get
   case H.lookup str env of
     Just expr -> evaluate expr
-    Nothing -> throwError ("Unknown identifier: " ++ show str)
-
+    Nothing -> throwError (Identifier str)
+    --Slight abuse of throwError, but how else am i supposed to return Left?
 
 evaluate (Conditional cond true false) = do
   c <- evaluate cond

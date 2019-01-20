@@ -1,6 +1,6 @@
 import Parsing.Combinators
 import AST
-import Evaluation.StrictEval
+import Evaluation.Evaluator
 import qualified Data.HashMap.Lazy as H
 
 main :: IO ()
