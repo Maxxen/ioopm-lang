@@ -1,7 +1,6 @@
 module Evaluation.Evaluator where
 import AST
 import Control.Monad.State
-import Control.Monad.Writer
 import Control.Monad.Except
 import Control.Monad.Identity
 import qualified Data.HashMap.Lazy as H
@@ -19,7 +18,6 @@ runEvaluator ev env = case runIdentity $ runExceptT $ runStateT ev env of
   (Right (r, s)) -> case r of
                       (Constant x) -> Right(x, s)
                       (partialExpr) -> Left $ "PARTIAL EVALUATION: " ++ show partialExpr
-                      
 
 
 evaluate :: Expr -> Evaluation
