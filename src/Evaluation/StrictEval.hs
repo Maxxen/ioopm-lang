@@ -1,23 +1,24 @@
 module Evaluation.StrictEval where
 import AST
-import Control.Monad.Reader
+import Control.Monad.State
 import Control.Monad.Writer
 import Control.Monad.Except
 import Control.Monad.Identity
 import qualified Data.HashMap.Lazy as H
 
 
-
-type EvalError = String
 type Var = String
 type Environment = H.HashMap Var Expr
-type Evaluator = ReaderT Environment (ExceptT EvalError (WriterT [String] Identity))
+type EvalError = String
 
-runEvaluator :: Evaluator a -> Environment -> Either EvalError a
-runEvaluator ev env = case runIdentity $ runWriterT $ runExceptT $ runReaderT ev env of
-  (Right r, log) -> Right r
-  (Left err, log) -> Left err  
+type Evaluator = StateT Environment (ExceptT EvalError (WriterT [String] Identity))
 
+runEvaluator :: Evaluator a -> Environment -> Either EvalError (a, Environment)
+runEvaluator ev env = case runIdentity $ runWriterT $ runExceptT $ runStateT ev env of
+  (Right (r,s), log) -> Right (r, s)
+  (Left err, log) -> Left err
+  
+type PartialEval = Evaluator (Either Expr Float)
 type StrictEval = Evaluator Float
 
 -- Strict evaluation
@@ -29,7 +30,7 @@ evaluate (Constant x) = do
 
 evaluate (Binary Assignment lhs (Identifier str)) = do
   val <- evaluate lhs
-  local (\env -> H.insert str (Constant val) env) (evaluate lhs)
+  modify $ (\env -> H.insert str (Constant val) env)
   return val
 
 evaluate (Binary op lhs rhs) = do
@@ -56,12 +57,14 @@ evaluate (Unary op a) = do
     Cos -> return (cos arg)
 
 evaluate (Scope expr) = do
-  val <- local id $ evaluate expr
+  env <- get -- Copy environment state
+  val <- evaluate expr
+  put env -- Reset environment state
   return val
 
 
 evaluate (Identifier str) = do
-  env <- ask
+  env <- get
   case H.lookup str env of
     Just expr -> evaluate expr
     Nothing -> throwError ("Unknown identifier: " ++ show str)
