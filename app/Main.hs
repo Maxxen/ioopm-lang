@@ -1,3 +1,4 @@
+import System.IO
 import Parsing.Combinators
 import AST
 import Evaluation.Evaluator
@@ -5,6 +6,7 @@ import qualified Data.HashMap.Lazy as H
 
 main :: IO ()
 main = do
+  hSetBuffering stdin NoBuffering
   l <- getLine
   eval l
 
