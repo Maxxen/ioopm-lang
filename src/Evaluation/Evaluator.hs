@@ -11,15 +11,16 @@ type Environment = H.HashMap Var Expr
 type EvalError = String
 
 type Evaluator = StateT Environment (ExceptT EvalError Identity)
-
-runEvaluator :: Evaluator a -> Environment -> Either EvalError (a, Environment)
-runEvaluator ev env = case runIdentity $ runExceptT $ runStateT ev env of
-  (Left err) -> Left err
-  (Right (r, s)) -> Right(r, s)
-  
 type Evaluation = Evaluator Expr
 
--- Strict evaluation
+runEvaluator :: Evaluation -> Environment -> Either EvalError (Float, Environment)
+runEvaluator ev env = case runIdentity $ runExceptT $ runStateT ev env of
+  (Left err) -> Left err
+  (Right (r, s)) -> case r of
+                      (Constant x) -> Right(x, s)
+                      (partialExpr) -> Left $ "PARTIAL EVALUATION: " ++ show partialExpr
+                      
+
 
 evaluate :: Expr -> Evaluation
 evaluate (Constant x) = return (Constant x)
