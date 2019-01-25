@@ -4,7 +4,8 @@ import Control.Applicative
 import Control.Monad
 
 data Expr
-  = Quit
+  = Block [Expr]
+  | Quit
   | Vars
   | Binary BOp Expr Expr
   | Unary UOp Expr
@@ -12,7 +13,8 @@ data Expr
   | Constant Float
   | Identifier String
   | Conditional Expr Expr Expr
-  | Function [Expr] Expr
+  | FunctionCall String Expr
+  | FunctionDecl String [String] Expr
   deriving(Eq, Show)
 
 data BOp
@@ -32,15 +34,17 @@ data UOp
   deriving (Eq, Show)
 
 
-
 parse :: Parser Expr
 parse = topLevel <?> "ERROR"
 
 topLevel :: Parser Expr
-topLevel = command <|> assignment
+topLevel = command <|> block (functionDecl <|> assignment)
 
 command :: Parser Expr
 command = (readSymbol "quit" >> return Quit) <|> (readSymbol "vars" >> return Vars)
+
+block :: Parser Expr -> Parser Expr
+block p = many p >>= return . Block
 
 assignment :: Parser Expr
 assignment = chainUp expression (readSymbol "=" >> return (Binary Assignment)) identifier
@@ -64,7 +68,8 @@ primary :: Parser Expr
 primary = readConstant
   <|> (readSymbol "(" *> assignment  <* readSymbol ")")
   <|> unary
-  <|> identifier
+  <|> functionCall
+  -- <|> identifier
   <?> "error, expected constant or identifier!"
   
 readConstant :: Parser Expr
@@ -74,7 +79,7 @@ readConstant = do
   token <- readToken $ some $ readDigit
   return $ Constant (read token :: Float)
 
-    -- ReadAnyString doesnt work!, try replace with ReadNumber
+  -- ReadAnyString doesnt work!, try replace with ReadNumber
 
 unary ::Parser Expr
 unary =
@@ -91,3 +96,22 @@ identifier = do
   return $ Identifier [t]
 
 
+functionCall :: Parser Expr
+functionCall = do
+  ident <- readToken readAnyChar
+  readSymbol "("
+  args <- separateBy1 assignment (readSymbol ",") >>= return . Block
+  readSymbol ")"
+  return $ FunctionCall [ident] args
+  
+functionDecl :: Parser Expr
+functionDecl = do
+  readSymbol "function"
+  name <- readToken readAnyChar
+  readSymbol "("
+  args <- separateBy (readToken readAnyChar) (readSymbol ",")
+  readSymbol ")"
+  readSymbol "{"
+  body <- block assignment
+  readSymbol "}"
+  return $ FunctionDecl [name] (map (\x -> [x]) args) body

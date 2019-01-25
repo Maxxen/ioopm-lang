@@ -8,16 +8,22 @@ main :: IO ()
 main = do
   hSetBuffering stdin NoBuffering
   l <- getLine
-  eval l
+  if l == "read"
+    then do
+    file <- getLine
+    src <- readFile file
+    eval src
+    else
+    eval l
 
-eval string = case (applyParser parse string) of
+  
+eval string = case applyParser parse string of
   Right parsedExpr -> do
     print $ show parsedExpr
-    case runEvaluator (evaluate parsedExpr) H.empty of
+    case runEvaluator H.empty $ evaluate parsedExpr of
       Right (result, env) -> do
         print $ "RESULT: " ++ show result
         print "VARIABLES: "
-        mapM_ (\(key, val) -> print (key ++ " = " ++ (show val))) (H.toList env) 
-        
+        mapM_ (\(key, val) -> print (key ++ " = " ++ (show val))) (H.toList env)
       Left err -> print $ "EVAL ERROR: " ++ err
   Left e -> print $ "PARSE ERROR: " ++ show e

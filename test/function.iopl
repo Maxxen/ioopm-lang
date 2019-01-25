@@ -1,0 +1,5 @@
+function f ( x , y ) { x + y }
+
+f ( 1 , 2 )
+
+-- TODO, fix identifier to readAnyString, also add reserved symbols

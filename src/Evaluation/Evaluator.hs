@@ -12,8 +12,8 @@ type EvalError = String
 type Evaluator = StateT Environment (ExceptT EvalError Identity)
 type Evaluation = Evaluator Expr
 
-runEvaluator :: Evaluation -> Environment -> Either EvalError (Float, Environment)
-runEvaluator ev env = case runIdentity $ runExceptT $ runStateT ev env of
+runEvaluator ::  Environment -> Evaluation -> Either EvalError (Float, Environment)
+runEvaluator env ev = case runIdentity $ runExceptT $ runStateT ev env of
   (Left err) -> Left err
   (Right (r, s)) -> case r of
                       (Constant x) -> Right(x, s)
@@ -22,10 +22,10 @@ runEvaluator ev env = case runIdentity $ runExceptT $ runStateT ev env of
 
 evaluate :: Expr -> Evaluation
 evaluate (Constant x) = return (Constant x)
-
+evaluate (Block l) = foldl1 (>>) (fmap evaluate l)
 evaluate (Binary Assignment lhs (Identifier str)) = do
   val <- evaluate lhs
-  modify $ (\env -> H.insert str lhs env)
+  modify $ H.insert str val
   return val
 
 evaluate (Binary op lhs rhs) = do
@@ -42,7 +42,7 @@ evaluate (Binary op lhs rhs) = do
     reduce (Multiplication) l r = return $ Constant $ l * r
     reduce (Division) l 0 = lift $ throwError "Division by 0!"
     reduce (Division) l r = return $ Constant $ l / r
-              
+
 
 evaluate (Unary op a) = do
   arg <- evaluate a
@@ -59,7 +59,29 @@ evaluate (Unary op a) = do
     reduce (Log) arg = if arg < 0
                          then lift $ throwError "Logarithm is undefined for x < 0"
                          else return $ Constant (log arg)
-   
+
+evaluate f@(FunctionDecl name params body) = do
+  modify $ H.insert name f
+  return f
+
+evaluate (FunctionCall name (Block args)) = do
+  env <- get
+  case H.lookup name env of
+    Nothing -> throwError $ "Unknown function: " ++ name
+    Just (FunctionDecl _ params (Block body)) -> do
+      assignedArgs <- assign args params
+      evaluate $ Block $ assignedArgs ++ body
+      
+
+  where
+    assign :: [Expr] -> [String] -> Evaluator [Expr]
+    assign a p
+      | length a < length p = throwError "Missing arguments!"
+      | length a > length p = throwError "Too many arguments!"
+      | length a == length p = return $
+        zipWith (\expr ident -> Binary Assignment expr (Identifier ident)) a p
+
+        
 evaluate (Scope expr) = do
   env <- get -- Copy environment state
   val <- evaluate expr
