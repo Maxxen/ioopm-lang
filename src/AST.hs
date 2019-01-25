@@ -49,7 +49,6 @@ block p = many p >>= return . Block
 assignment :: Parser Expr
 assignment = chainUp expression (readSymbol "=" >> return (Binary Assignment)) identifier
 
-
 expression :: Parser Expr
 expression = chain term operation
   where
@@ -66,10 +65,10 @@ term = chain primary operation
 
 primary :: Parser Expr
 primary = readConstant
-  <|> (readSymbol "(" *> assignment  <* readSymbol ")")
+  <|> parens assignment
   <|> unary
   <|> functionCall
-  -- <|> identifier
+  <|> identifier
   <?> "error, expected constant or identifier!"
   
 readConstant :: Parser Expr
@@ -82,8 +81,8 @@ readConstant = do
   -- ReadAnyString doesnt work!, try replace with ReadNumber
 
 unary ::Parser Expr
-unary =
-   (readSymbol "-" >> (Unary Negation) <$> primary)
+unary
+   =  (readSymbol "-" >> (Unary Negation) <$> primary)
   <|> (readSymbol "exp" >> (Unary Exp) <$> primary)
   <|> (readSymbol "log" >> (Unary Log) <$> primary)
   <|> (readSymbol "sin" >> (Unary Sin) <$> primary)
@@ -92,26 +91,21 @@ unary =
     
 identifier :: Parser Expr
 identifier = do
-  t <- readToken readAnyChar
-  return $ Identifier [t]
+  str <- readIdentifier
+  return $ Identifier str
 
 
 functionCall :: Parser Expr
 functionCall = do
-  ident <- readToken readAnyChar
-  readSymbol "("
-  args <- separateBy1 assignment (readSymbol ",") >>= return . Block
-  readSymbol ")"
-  return $ FunctionCall [ident] args
+  ident <- readIdentifier
+  args <- parens $ separateBy1 assignment (readSymbol ",") >>= return . Block
+  return $ FunctionCall ident args
+
   
 functionDecl :: Parser Expr
 functionDecl = do
   readSymbol "function"
-  name <- readToken readAnyChar
-  readSymbol "("
-  args <- separateBy (readToken readAnyChar) (readSymbol ",")
-  readSymbol ")"
-  readSymbol "{"
-  body <- block assignment
-  readSymbol "}"
-  return $ FunctionDecl [name] (map (\x -> [x]) args) body
+  name <- readIdentifier
+  args <- parens $ separateBy readIdentifier (readSymbol ",")
+  body <- curly $ block assignment
+  return $ FunctionDecl name args body

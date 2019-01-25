@@ -1,5 +1,7 @@
-function f ( x , y ) { x + y }
+function add (x, y) {
+         x + y
+}
 
-f ( 1 , 2 )
+add(1,2)
 
--- TODO, fix identifier to readAnyString, also add reserved symbols
+add(1,2) = z

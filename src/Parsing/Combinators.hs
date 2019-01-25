@@ -20,6 +20,7 @@ instance Semigroup ParseError where
   e <> (Unexpected _) = e
   e <> f = f
 
+
 data Input = Input {input :: String, column :: Int}
 type Parser a = StateT Input (Except ParseError) a
 
@@ -85,17 +86,12 @@ readString (x:xs) = do
 readString [] = return []
 
 readNumber :: Parser String  
-readNumber = readMany $ readDigit
+readNumber = many $ readDigit
 
-readMany :: Parser a -> Parser [a]
-readMany p = readMany1 p <|> mzero
+readIdentifier :: Parser String
+readIdentifier = readToken $ some $ require isAlphaNum  
 
-readMany1 :: Parser a -> Parser [a]
-readMany1 p = do
-  x <- p
-  xs <- readMany p
-  return (x:xs)
-  
+
 -- Ex separateBy (,2,3) "," -> valid
 separateBy :: Parser a -> Parser b -> Parser [a]
 separateBy parser separator = (parser `separateBy1` separator) <|> mzero
@@ -141,3 +137,10 @@ chainUp start operation parser = do {
   p <- parser;
   chainUp (return (op s p)) operation parser;
   } <|> start
+
+
+parens :: Parser a -> Parser a
+parens p = readSymbol "(" *> p <* readSymbol ")"
+
+curly :: Parser a -> Parser a
+curly p = readSymbol "{" *> p <* readSymbol "}"
