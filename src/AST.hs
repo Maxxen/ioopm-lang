@@ -2,20 +2,20 @@ module AST where
 import Parsing.Combinators
 import Control.Applicative
 import Control.Monad
+import Data.List
+import Control.Monad.Reader
 
 data Expr
   = Block [Expr]
-  | Quit
-  | Vars
   | Binary BOp Expr Expr
   | Unary UOp Expr
   | Scope Expr
   | Constant Float
   | Identifier String
   | Conditional Expr Expr Expr
-  | FunctionCall String Expr
+  | FunctionCall String [Expr]
   | FunctionDecl String [String] Expr
-  deriving(Eq, Show)
+  deriving(Eq)
 
 data BOp
   = Assignment
@@ -23,7 +23,7 @@ data BOp
   | Subtraction
   | Multiplication
   | Division
-  deriving (Eq, Show)
+  deriving (Eq)
 
 data UOp
   = Negation
@@ -34,14 +34,43 @@ data UOp
   deriving (Eq, Show)
 
 
+
+instance Show Expr where
+  show e = drawAST 0 e
+
+drawAST :: Int -> Expr -> String
+drawAST d (Block lines) =
+  let nd = d + 1
+  in "{\n" ++ intercalate "\n" (map (indent nd . drawAST nd) lines) ++ "\n" ++ (indent d "}\n")
+drawAST d (Binary op l r) = (drawAST d l) ++ " " ++ show op ++ " " ++ (drawAST d r)
+drawAST d (Unary op argument) = show op ++ "(" ++ (drawAST d argument) ++ ")"
+drawAST d (Scope expression) = "{" ++ (drawAST d expression) ++ "}"
+drawAST d (Constant float) = show float
+drawAST d (Identifier ident) = ident
+drawAST d (Conditional i t e) = "TODO"
+drawAST d (FunctionCall ident arguments) =
+  ident ++ "(" ++ intercalate ", " (map (drawAST d) arguments) ++ ")"
+  
+drawAST d (FunctionDecl ident params (Block body)) =
+  let nd = d + 1
+  in "function " ++ ident ++ "(" ++ intercalate ", " params ++ ")" ++
+     "{\n" ++ intercalate "\n" (map (indent nd . drawAST nd) body) ++ "\n" ++ indent d "}\n"
+    
+indent :: Int -> String -> String
+indent n str = (concat $ replicate n "  ") ++ str
+
+instance Show BOp where
+  show Assignment = "="
+  show Addition = "+"
+  show Subtraction = "-"
+  show Multiplication = "*"
+  show Division = "/"
+
 parse :: Parser Expr
-parse = topLevel <?> "ERROR"
+parse = block (topLevel) <?> "ERROR"
 
 topLevel :: Parser Expr
-topLevel = command <|> block (functionDecl <|> assignment)
-
-command :: Parser Expr
-command = (readSymbol "quit" >> return Quit) <|> (readSymbol "vars" >> return Vars)
+topLevel = functionDecl <|> assignment
 
 block :: Parser Expr -> Parser Expr
 block p = many p >>= return . Block
@@ -98,7 +127,7 @@ identifier = do
 functionCall :: Parser Expr
 functionCall = do
   ident <- readIdentifier
-  args <- parens $ separateBy1 assignment (readSymbol ",") >>= return . Block
+  args <- parens $ separateBy1 assignment (readSymbol ",")
   return $ FunctionCall ident args
 
   

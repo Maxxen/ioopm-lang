@@ -17,13 +17,21 @@ main = do
     eval l
 
   
-eval string = case applyParser parse string of
+eval string = case runParser parse string of
   Right parsedExpr -> do
-    print $ show parsedExpr
-    case runEvaluator H.empty $ evaluate parsedExpr of
+    putStrLn $ show parsedExpr
+    case runEvaluator emptyEnv $ evaluate parsedExpr of
       Right (result, env) -> do
-        print $ "RESULT: " ++ show result
-        print "VARIABLES: "
-        mapM_ (\(key, val) -> print (key ++ " = " ++ (show val))) (H.toList env)
-      Left err -> print $ "EVAL ERROR: " ++ err
+        putStrLn $ "RESULT: \n" ++ show result
+        printEnv env
+      Left err -> putStrLn $ "EVAL ERROR: " ++ err
+        
   Left e -> print $ "PARSE ERROR: " ++ show e
+
+
+printEnv :: Environment -> IO ()
+printEnv env = do
+   putStrLn "VARIABLES:"
+   mapM_ (\(key, val) -> putStrLn (key ++ " = " ++ (show val))) (H.toList (fst env))
+   putStrLn "FUNCTIONS:"
+   mapM_ (\(key, val) -> putStrLn (key ++ " = " ++ (show val))) (H.toList (snd env))

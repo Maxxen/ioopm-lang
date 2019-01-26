@@ -51,8 +51,8 @@ readToken p = p <* readSpace
 readSymbol :: String -> Parser String
 readSymbol s = readToken $ readString s
 
-applyParser :: Parser a -> String -> Either ParseError a
-applyParser p input = runIdentity $ runExceptT $ evalStateT (readSpace *> p) (Input input 0) 
+runParser :: Parser a -> String -> Either ParseError a
+runParser p input = runIdentity $ runExceptT $ evalStateT (readSpace *> p) (Input input 0) 
 
 
 -- Helper combinators

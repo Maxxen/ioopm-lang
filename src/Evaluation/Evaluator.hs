@@ -1,14 +1,33 @@
 module Evaluation.Evaluator where
 import AST
+import Data.Tuple
 import Control.Monad.State
 import Control.Monad.Except
 import Control.Monad.Identity
 import qualified Data.HashMap.Lazy as H
 
-type Var = String
-type Environment = H.HashMap Var Expr
-type EvalError = String
+type VIdent = String
+type FIdent = String
+-- Fst = Variable hashmap
+-- Snd = Function hashmap
+type Environment = (H.HashMap VIdent Expr, H.HashMap FIdent Expr)
 
+emptyEnv :: Environment
+emptyEnv = (H.empty, H.empty)
+
+insertFunc :: FIdent -> Expr -> Evaluator ()
+insertFunc ident decl = modify $ (\(vars, funcs) -> (vars, H.insert ident decl funcs))
+
+lookupFunc :: FIdent -> Evaluator (Maybe Expr)
+lookupFunc ident = get >>= (return . H.lookup ident . snd)
+
+insertVar :: VIdent -> Expr -> Evaluator ()
+insertVar ident expr = modify $ (\(vars, funcs) -> (H.insert ident expr vars, funcs))
+
+lookupVar :: VIdent -> Evaluator (Maybe Expr)
+lookupVar ident = get >>= (return . H.lookup ident . fst)
+  
+type EvalError = String
 type Evaluator = StateT Environment (ExceptT EvalError Identity)
 type Evaluation = Evaluator Expr
 
@@ -17,15 +36,28 @@ runEvaluator env ev = case runIdentity $ runExceptT $ runStateT ev env of
   (Left err) -> Left err
   (Right (r, s)) -> case r of
                       (Constant x) -> Right(x, s)
-                      (partialExpr) -> Left $ "PARTIAL EVALUATION: " ++ show partialExpr
+                      (partialExpr) -> Left $ "PARTIAL EVALUATION: " ++ show s
 
 
 evaluate :: Expr -> Evaluation
 evaluate (Constant x) = return (Constant x)
-evaluate (Block l) = foldl1 (>>) (fmap evaluate l)
-evaluate (Binary Assignment lhs (Identifier str)) = do
+
+evaluate (Block l) = do
+  env <- get
+  v <- foldl1 (>>) (fmap evaluate l)
+  put env
+  return v
+
+evaluate (Scope expr) = do
+  env <- get -- Copy environment state
+  val <- evaluate expr
+  put env -- Reset environment state
+  return val
+
+
+evaluate (Binary Assignment lhs (Identifier ident)) = do
   val <- evaluate lhs
-  modify $ H.insert str val
+  insertVar ident val
   return val
 
 evaluate (Binary op lhs rhs) = do
@@ -60,18 +92,17 @@ evaluate (Unary op a) = do
                          then lift $ throwError "Logarithm is undefined for x < 0"
                          else return $ Constant (log arg)
 
-evaluate f@(FunctionDecl name params body) = do
-  modify $ H.insert name f
+evaluate f@(FunctionDecl ident params body) = do
+  insertFunc ident f
   return f
 
-evaluate (FunctionCall name (Block args)) = do
-  env <- get
-  case H.lookup name env of
-    Nothing -> throwError $ "Unknown function: " ++ name
+evaluate (FunctionCall ident args) = do
+  f <- lookupFunc ident
+  case f of
+    Nothing -> throwError $ "Unknown function: " ++ ident
     Just (FunctionDecl _ params (Block body)) -> do
       assignedArgs <- assign args params
       evaluate $ Block $ assignedArgs ++ body
-      
 
   where
     assign :: [Expr] -> [String] -> Evaluator [Expr]
@@ -81,15 +112,9 @@ evaluate (FunctionCall name (Block args)) = do
       | length a == length p = return $
         zipWith (\expr ident -> Binary Assignment expr (Identifier ident)) a p
 
-        
-evaluate (Scope expr) = do
-  env <- get -- Copy environment state
-  val <- evaluate expr
-  put env -- Reset environment state
-  return val
 
-evaluate ident@(Identifier str) = do
-  env <- get
-  case H.lookup str env of
+evaluate (Identifier ident) = do
+  v <- lookupVar ident
+  case v of
     Just expr -> evaluate expr
-    Nothing -> return ident
+    Nothing -> return (Identifier ident)
