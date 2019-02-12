@@ -1,7 +1,5 @@
-function add (x, y) {
-         x + y
+function add (x, y, z) {
+         x + y + z
 }
 
-add(1,2)
-
-add(1,2) = z
+add(1, 2, 3)

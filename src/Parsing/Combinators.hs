@@ -20,7 +20,6 @@ instance Semigroup ParseError where
   e <> (Unexpected _) = e
   e <> f = f
 
-
 data Input = Input {input :: String, column :: Int}
 type Parser a = StateT Input (Except ParseError) a
 
@@ -34,11 +33,6 @@ p <?> msg = (mapStateT . mapExceptT . fmap) f p
   where
     f (Left (Unexpected err)) = Left $ Expected $ err ++ "\n" ++ msg
     f other = other
-
---(StateT m) <?> msg = StateT $ \s -> case runIdentity $ runExceptT (m s) of
---  Right val -> return val
---  Left (Unexpected err) -> throwError $ Expected $ (show (column s)) ++ ": " ++ msg
---  Left err -> throwError err
 
 -- Lexical Parsers
 readSpace :: Parser String
@@ -137,7 +131,6 @@ chainUp start operation parser = do {
   p <- parser;
   chainUp (return (op s p)) operation parser;
   } <|> start
-
 
 parens :: Parser a -> Parser a
 parens p = readSymbol "(" *> p <* readSymbol ")"

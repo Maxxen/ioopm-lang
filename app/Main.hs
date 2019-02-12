@@ -1,6 +1,7 @@
 import System.IO
 import Parsing.Combinators
 import AST
+import Repl
 import Evaluation.Evaluator
 import qualified Data.HashMap.Lazy as H
 
@@ -15,19 +16,12 @@ main = do
     eval src
     else
     eval l
-
   
-eval string = case runParser parse string of
-  Right parsedExpr -> do
-    putStrLn $ show parsedExpr
-    case runEvaluator emptyEnv $ evaluate parsedExpr of
-      Right (result, env) -> do
-        putStrLn $ "RESULT: \n" ++ show result
-        printEnv env
-      Left err -> putStrLn $ "EVAL ERROR: " ++ err
-        
-  Left e -> print $ "PARSE ERROR: " ++ show e
-
+eval input = case runRepl input of
+  (Just (result, env), log) -> do 
+    putStrLn $ "RESULT: \n" ++ show result ++ log
+    printEnv env
+  (Nothing, log) -> putStrLn log
 
 printEnv :: Environment -> IO ()
 printEnv env = do

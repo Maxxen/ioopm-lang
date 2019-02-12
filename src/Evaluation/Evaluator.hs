@@ -1,10 +1,12 @@
 module Evaluation.Evaluator where
 import AST
+import Parsing.Combinators (runParser)
 import Data.Tuple
 import Control.Monad.State
 import Control.Monad.Except
 import Control.Monad.Identity
 import qualified Data.HashMap.Lazy as H
+
 
 type VIdent = String
 type FIdent = String
@@ -31,13 +33,8 @@ type EvalError = String
 type Evaluator = StateT Environment (ExceptT EvalError Identity)
 type Evaluation = Evaluator Expr
 
-runEvaluator ::  Environment -> Evaluation -> Either EvalError (Float, Environment)
-runEvaluator env ev = case runIdentity $ runExceptT $ runStateT ev env of
-  (Left err) -> Left err
-  (Right (r, s)) -> case r of
-                      (Constant x) -> Right(x, s)
-                      (partialExpr) -> Left $ "PARTIAL EVALUATION: " ++ show s
-
+runEvaluator ::   Evaluation -> Environment -> Either EvalError (Expr, Environment)
+runEvaluator ev = runIdentity . runExceptT . runStateT ev
 
 evaluate :: Expr -> Evaluation
 evaluate (Constant x) = return (Constant x)
@@ -91,6 +88,15 @@ evaluate (Unary op a) = do
     reduce (Log) arg = if arg < 0
                          then lift $ throwError "Logarithm is undefined for x < 0"
                          else return $ Constant (log arg)
+
+evaluate (Conditional condExp thenExp elseExp) = do
+  cond <- evaluate condExp
+  case cond of
+    (Constant bool ) ->
+      if bool /= 0
+      then evaluate thenExp
+      else evaluate elseExp
+    _ -> return $ Conditional cond thenExp elseExp
 
 evaluate f@(FunctionDecl ident params body) = do
   insertFunc ident f
