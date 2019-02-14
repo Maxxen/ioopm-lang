@@ -1,94 +1,139 @@
+{-# OPTIONS_GHC -Wall #-}
 module Parsing.Combinators where
-
-import Control.Monad.State
-import Control.Monad.Except
-import Control.Monad.Identity
-import Text.Read (readMaybe)
 import Data.Char
-import Data.Semigroup
-import Control.Applicative
+import Debug.Trace
+-- (Column, Row)
+type Position = (Int, Int)
+data Input = Input {chars :: String, pos :: Position}
 
--- Parsers
---type ParseError = String
-data ParseError = Unexpected String | Expected String
-  deriving(Show)
+type ParseError = String
 
-instance Monoid ParseError where
-  mempty = Unexpected ""
+data Consumed a
+  = Consumed (Reply a)
+  | Empty (Reply a)
+
+instance Functor Consumed where
+  fmap f (Consumed r) = Consumed (fmap f r)
+  fmap f (Empty r) = Consumed (fmap f r)
+
+data Reply a
+  = Ok a Input
+  | Error ParseError
+
+instance Functor Reply where
+  fmap f (Ok a input) = Ok (f a) input
+  fmap _ (Error e) = (Error e)
+
+data Parser a = Parser (Input -> Consumed a)
+
+runParser :: Parser a -> String -> Either ParseError a
+runParser (Parser p) input = case p (Input input (0, 0)) of
+  Consumed (Ok v _) -> Right v
+  Empty (Ok v _) -> Right v
+  Consumed (Error err) -> Left err
+  Empty (Error err) -> Left err
+    
+unwrap :: Parser a -> (Input -> Consumed a)
+unwrap (Parser p) = p
+
+instance Functor Parser where
+  fmap f (Parser action) = Parser $ fmap f . action
+
+instance Applicative Parser where
+  pure a = Parser $ \input -> Empty (Ok a (input))
   
-instance Semigroup ParseError where
-  e <> (Unexpected _) = e
-  e <> f = f
+  (Parser p) <*> q = Parser $ \input -> case (p input) of
+    Consumed reply -> case reply of
+      Ok f rest -> unwrap (f <$> q) rest
+      Error err -> Consumed $ Error err  
+    Empty reply -> case reply of
+      Ok f rest -> unwrap (f <$> q) rest
+      Error err -> Empty $ Error err
+                           
+instance Monad Parser where
+  return = pure
+  
+  (Parser p) >>= f
+    = Parser $ \input -> case p input of
+    Empty reply1
+      -> case reply1 of
+           Ok x rest -> unwrap (f x) rest
+           Error err -> Empty $ Error err
+           
+    Consumed reply1
+      -> Consumed $
+         case reply1 of
+           Ok x rest
+             -> case unwrap (f x) rest of
+                  Consumed reply2 -> reply2
+                  Empty reply2 -> reply2
+           Error err -> Error err
 
-data Input = Input {input :: String, column :: Int}
-type Parser a = StateT Input (Except ParseError) a
+
+(<|>) :: Parser a -> Parser a -> Parser a
+(Parser p) <|> (Parser q) = Parser $ \input -> case p input of
+  Empty (Error _) -> (q input)
+  Empty ok -> case (q input) of
+                Empty _ -> Empty ok
+                consumed -> consumed
+  consumed -> consumed  
+  
+many1 :: Parser a -> Parser [a]
+many1 p = do
+  x  <- p;
+  xs <- (many1 p <|> return [])
+  return (x:xs)
+
+many :: Parser a -> Parser [a]
+many p = many1 p <|> return []
 
 -- Error throwing
 throwErr :: String -> Parser a
-throwErr msg = StateT $ \s -> throwError $ Expected $ (show (column s)) ++ ": " ++ show msg
-
--- Provide more context in case of Unexpected errors
-(<?>) :: Parser a -> String -> Parser a
-p <?> msg = (mapStateT . mapExceptT . fmap) f p
-  where
-    f (Left (Unexpected err)) = Left $ Expected $ err ++ "\n" ++ msg
-    f other = other
+throwErr msg = Parser $ \input -> Empty $ Error $ (show (pos input)) ++ ": " ++ show msg
 
 -- Lexical Parsers
-readSpace :: Parser String
-readSpace = many $ require isSpace
+satisfy :: (Char -> Bool) -> Parser Char
+satisfy test = Parser $ \input -> case chars input of
+  [] -> Empty $ Error $ traceShow "EOF" "End of file!"
+  (c:cs) | traceShow c $ test c -> 
+             let (col, row) = pos input
+             in traceShow "Consumed" Consumed $ Ok c (Input cs (col, row + 1))
+         | otherwise -> Empty $ Error $ "Unexpected: '" ++ [c] ++ "' " ++ show (pos input)
+
+space :: Parser String
+space = many $ satisfy isSpace
 
 -- Reading tokens will remove all trailing whitespace
-readToken :: Parser a -> Parser a
-readToken p = p <* readSpace
+token :: Parser a -> Parser a
+token p = p <* space
 
-readSymbol :: String -> Parser String
-readSymbol s = readToken $ readString s
-
-runParser :: Parser a -> String -> Either ParseError a
-runParser p input = runIdentity $ runExceptT $ evalStateT (readSpace *> p) (Input input 0) 
-
-
--- Helper combinators
-              
-require :: (Char -> Bool) -> Parser Char
-require predicate = do
-  token <- readAnyChar
-  if predicate token
-    then return token
-    else throwError $ Unexpected $ " " ++ [token]
-
-readAnyChar :: Parser Char
-readAnyChar = StateT $ \s -> case input s of
-  [] -> throwError $ Unexpected "end of file!"
-  (t:ts) -> return (t, Input ts (column s + 1))
-
+symbol :: String -> Parser String
+symbol s = token $ string s
     
-readDigit :: Parser Char
-readDigit = require isDigit
-
-readChar :: Char -> Parser Char
-readChar c = require (== c)
+digit :: Parser Char
+digit = traceShow "Digit" satisfy isDigit
+char :: Char -> Parser Char
+char c = satisfy (== c)
 
 -- Recursive combinators
 
-readString :: String -> Parser String
-readString (x:xs) = do
-  _ <- readChar x;
-  _ <- readString xs;
+string :: String -> Parser String
+string (x:xs) = do
+  _ <- char x;
+  _ <- string xs;
   return (x:xs)
-readString [] = return []
+string [] = return []
 
-readNumber :: Parser String  
-readNumber = many $ readDigit
+number :: Parser String  
+number = many $ digit
 
-readIdentifier :: Parser String
-readIdentifier = readToken $ some $ require isAlphaNum  
+identif :: Parser String
+identif = token $ many1 $ satisfy isAlphaNum  
 
 
 -- Ex separateBy (,2,3) "," -> valid
 separateBy :: Parser a -> Parser b -> Parser [a]
-separateBy parser separator = (parser `separateBy1` separator) <|> mzero
+separateBy parser separator = (parser `separateBy1` separator) <|> return []
 
 -- Ex
 -- separateBy (1, 2, 3) "," -> valid
@@ -133,7 +178,7 @@ chainUp start operation parser = do {
   } <|> start
 
 parens :: Parser a -> Parser a
-parens p = readSymbol "(" *> p <* readSymbol ")"
+parens p = symbol "(" *> p <* symbol ")"
 
 curly :: Parser a -> Parser a
-curly p = readSymbol "{" *> p <* readSymbol "}"
+curly p = symbol "{" *> p <* symbol "}"

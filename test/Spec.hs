@@ -1,13 +1,12 @@
 import AST
-import Parsing.Combinators
+import Parsing.Combinators hiding ( (<|>) )
 import Control.Applicative
 import Evaluation.Evaluator
-import Repl
 import Repl
 
 
 main :: IO ()
-main = putStrLn $ runTests $ map tryTest [
+main  = putStrLn $ runTests $ map tryTest [
   ("1", Constant 1),
   ("1 + 2", Constant 3),
 
