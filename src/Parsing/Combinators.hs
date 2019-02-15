@@ -1,12 +1,17 @@
 {-# OPTIONS_GHC -Wall #-}
 module Parsing.Combinators where
 import Data.Char
-import Debug.Trace
+import Data.List (intercalate)
 -- (Column, Row)
+
 type Position = (Int, Int)
 data Input = Input {chars :: String, pos :: Position}
 
-type ParseError = String
+data Message = Message Position String [String]
+instance Show Message where
+  show (Message position err []) = show position ++ ": Unexpected: " ++ err ++ ", No possible fixes..."
+  show (Message position err expected) = show position ++ ": Unexpected: " ++ err ++
+    "\nExpected:" ++ (intercalate "\n\t" expected)
 
 data Consumed a
   = Consumed (Reply a)
@@ -17,19 +22,19 @@ instance Functor Consumed where
   fmap f (Empty r) = Consumed (fmap f r)
 
 data Reply a
-  = Ok a Input
-  | Error ParseError
+  = Ok a Input Message
+  | Error Message
 
 instance Functor Reply where
-  fmap f (Ok a input) = Ok (f a) input
+  fmap f (Ok a input msg) = Ok (f a) input msg
   fmap _ (Error e) = (Error e)
 
 data Parser a = Parser (Input -> Consumed a)
 
-runParser :: Parser a -> String -> Either ParseError a
+runParser :: Parser a -> String -> Either Message a
 runParser (Parser p) input = case p (Input input (0, 0)) of
-  Consumed (Ok v _) -> Right v
-  Empty (Ok v _) -> Right v
+  Consumed (Ok v _ _) -> Right v
+  Empty (Ok v _ _) -> Right v
   Consumed (Error err) -> Left err
   Empty (Error err) -> Left err
     
@@ -40,14 +45,14 @@ instance Functor Parser where
   fmap f (Parser action) = Parser $ fmap f . action
 
 instance Applicative Parser where
-  pure a = Parser $ \input -> Empty (Ok a (input))
+  pure a = Parser $ \input -> Empty (Ok a input (Message (0,0) [] []))
   
   (Parser p) <*> q = Parser $ \input -> case (p input) of
     Consumed reply -> case reply of
-      Ok f rest -> unwrap (f <$> q) rest
+      Ok f rest _ -> unwrap (f <$> q) rest
       Error err -> Consumed $ Error err  
     Empty reply -> case reply of
-      Ok f rest -> unwrap (f <$> q) rest
+      Ok f rest _ -> unwrap (f <$> q) rest
       Error err -> Empty $ Error err
                            
 instance Monad Parser where
@@ -57,13 +62,13 @@ instance Monad Parser where
     = Parser $ \input -> case p input of
     Empty reply1
       -> case reply1 of
-           Ok x rest -> unwrap (f x) rest
+           Ok x rest _ -> unwrap (f x) rest
            Error err -> Empty $ Error err
            
     Consumed reply1
       -> Consumed $
          case reply1 of
-           Ok x rest
+           Ok x rest _
              -> case unwrap (f x) rest of
                   Consumed reply2 -> reply2
                   Empty reply2 -> reply2
@@ -72,11 +77,31 @@ instance Monad Parser where
 
 (<|>) :: Parser a -> Parser a -> Parser a
 (Parser p) <|> (Parser q) = Parser $ \input -> case p input of
-  Empty (Error _) -> (q input)
-  Empty ok -> case (q input) of
-                Empty _ -> Empty ok
-                consumed -> consumed
+  Empty (Error msg1) ->
+    case (q input) of
+      Empty (Error msg2) -> mergeError msg1 msg2
+      Empty (Ok x inp msg2) -> mergeOk x inp msg1 msg2
+      consumed -> consumed
+  Empty (Ok x inp msg1) ->
+    case (q input) of
+      Empty (Error msg2) -> mergeOk x inp msg1 msg2
+      Empty (Ok _ _ msg2) -> mergeOk x inp msg1 msg2
+      consumed -> consumed
   consumed -> consumed  
+
+try :: Parser a -> Parser a
+try (Parser p) = Parser $ \input -> case p input of
+  Consumed (Error err) -> Empty $ Error err
+  other -> other
+
+mergeOk :: a -> Input -> Message -> Message -> Consumed a
+mergeOk x inp msg1 msg2 = Empty $ Ok x inp $ mergeMsg msg1 msg2
+  
+mergeError ::  Message -> Message -> Consumed a
+mergeError msg1 msg2 = Empty $ Error $ mergeMsg msg1 msg2
+
+mergeMsg :: Message -> Message -> Message
+mergeMsg (Message position err exp1) (Message _ _ exp2) = Message position err $ exp1 ++ exp2
   
 many1 :: Parser a -> Parser [a]
 many1 p = do
@@ -89,16 +114,17 @@ many p = many1 p <|> return []
 
 -- Error throwing
 throwErr :: String -> Parser a
-throwErr msg = Parser $ \input -> Empty $ Error $ (show (pos input)) ++ ": " ++ show msg
+throwErr msg = Parser $ \input -> Empty $ Error $ Message (pos input) msg []
 
 -- Lexical Parsers
 satisfy :: (Char -> Bool) -> Parser Char
 satisfy test = Parser $ \input -> case chars input of
-  [] -> Empty $ Error $ traceShow "EOF" "End of file!"
-  (c:cs) | traceShow c $ test c -> 
+  [] -> Empty $ Error $ Message (pos input) "end of input" []
+  (c:cs) | test c -> 
              let (col, row) = pos input
-             in traceShow "Consumed" Consumed $ Ok c (Input cs (col, row + 1))
-         | otherwise -> Empty $ Error $ "Unexpected: '" ++ [c] ++ "' " ++ show (pos input)
+                 newState = Input cs (col, row + 1) 
+             in  seq newState $ Consumed $ Ok c newState (Message (pos input) [] []) 
+         | otherwise -> Empty $ Error $ Message (pos input) [c] []
 
 space :: Parser String
 space = many $ satisfy isSpace
@@ -111,7 +137,7 @@ symbol :: String -> Parser String
 symbol s = token $ string s
     
 digit :: Parser Char
-digit = traceShow "Digit" satisfy isDigit
+digit = satisfy isDigit
 char :: Char -> Parser Char
 char c = satisfy (== c)
 
@@ -154,12 +180,12 @@ Chain expressions "left":
     p   p
 --}
 chain :: Parser a -> Parser (a -> a -> a) -> Parser a
-chain parser operation = parser >>= rest
-  where rest left = do {
-          f <- operation;
-          right <- parser;
-          rest (f left right);
-          } <|> return left
+chain p op = p >>= rest
+  where rest l = try (do {
+          f <- op;
+          r <- p;
+          rest (f l r);
+          }) <|> return l
 
 {-
 Chain expression "upwards"
@@ -170,12 +196,12 @@ Chain expression "upwards"
  s    p
 -}
 chainUp :: Parser a -> Parser (a -> a -> a) -> Parser a -> Parser a
-chainUp start operation parser = do {
+chainUp start operation parser = try (do {
   s <- start;
   op <- operation;
   p <- parser;
   chainUp (return (op s p)) operation parser;
-  } <|> start
+  }) <|> start
 
 parens :: Parser a -> Parser a
 parens p = symbol "(" *> p <* symbol ")"

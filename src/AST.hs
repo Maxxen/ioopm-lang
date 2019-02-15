@@ -2,7 +2,6 @@
 
 module AST where
 import Parsing.Combinators
-import Debug.Trace
 
 data Expr
   = Block [Expr]
@@ -40,43 +39,42 @@ instance Show BOp where
   show Division = "/"
 
 parse :: Parser Expr
-parse = let b = traceShow "Block:" (block topLevel)
-        in b
+parse = topLevel --block topLevel
 
 topLevel :: Parser Expr
-topLevel = functionDecl <|> assignment
+topLevel = assignment <|> functionDecl
 
 block :: Parser Expr -> Parser Expr
-block p = many p >>= return . Block
+block p = (many1 p >>= return . Block)
 
 assignment :: Parser Expr
-assignment = chainUp expression (symbol "=" >> return (Binary Assignment)) identifier
+assignment =  chainUp expression (symbol "=" >> return (Binary Assignment)) identifier
 
 expression :: Parser Expr
 expression = chain term operation
   where
     operation
-       = (symbol "+" >> return (Binary Addition))
-      <|> (symbol "-" >> return (Binary Subtraction))
+       = try (symbol "-" >> return (Binary Subtraction))
+      <|> (symbol "+" >> return (Binary Addition))
 
 term :: Parser Expr
 term = chain primary operation
   where
     operation
-       = (symbol "*" >> return (Binary Multiplication))
+       = try (symbol "*" >> return (Binary Multiplication))
       <|>(symbol "/" >> return (Binary Division))
 
 primary :: Parser Expr
-primary = constant
+primary
+   = constant
   <|> scope (parens assignment)
   <|> conditional
   <|> unary
   <|> functionCall
   <|> identifier
 
-
 constant :: Parser Expr
-constant = traceShow "Constant" $ (token $ many1 $ digit) >>= return . Constant . (read :: String -> Float)
+constant = (token $ many1 $ digit) >>= return . Constant . (read :: String -> Float)
 
 scope :: Parser Expr -> Parser Expr
 scope p = p >>= return . Scope
